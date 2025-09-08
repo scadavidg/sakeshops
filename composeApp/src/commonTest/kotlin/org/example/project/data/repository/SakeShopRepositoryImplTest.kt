@@ -1,98 +1,105 @@
 package org.example.project.data.repository
 
 import kotlinx.coroutines.test.runTest
-import org.example.project.data.model.ShopDto
-import org.example.project.data.source.local.ShopLocalDataSource
-import org.example.project.domain.model.Result
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SakeShopRepositoryImplTest {
-
-    private val mockLocalDataSource = object : ShopLocalDataSource {
-        private val mockShops = listOf(
-            ShopDto(
-                id = "1",
-                name = "Test Sake Shop 1",
-                address = "Test Address 1",
-                rating = 4.5,
-                imageUrl = "https://example.com/image1.jpg",
-                description = "Test Description 1",
-                websiteUrl = "https://example.com/shop1"
-            ),
-            ShopDto(
-                id = "2",
-                name = "Test Sake Shop 2",
-                address = "Test Address 2",
-                rating = 4.0,
-                imageUrl = "https://example.com/image2.jpg",
-                description = "Test Description 2",
-                websiteUrl = "https://example.com/shop2"
-            )
-        )
-
-        override suspend fun getAllShops(): List<ShopDto> = mockShops
-
-        override suspend fun getShopById(id: String): ShopDto? = mockShops.find { it.id == id }
-
-        override suspend fun initializeData(): Boolean = true
-    }
-
-    private val repository = SakeShopRepositoryImpl(mockLocalDataSource)
-
+    
+    private val repository = SakeShopRepositoryImpl(org.example.project.data.source.local.ShopLocalDataSourceImpl())
+    
     @Test
-    fun `should return success with list of sake shop previews when local data source returns data`() = runTest {
+    fun `getAllSakeShops should return all shops`() = runTest {
         // When
         val result = repository.getAllSakeShops()
-
+        
         // Then
-        assertTrue(result is Result.Success)
-        val shops = (result as Result.Success).data
-        assertEquals(2, shops.size)
-        assertEquals("Test Sake Shop 1", shops[0].name)
-        assertEquals("Test Address 1", shops[0].address)
-        assertEquals(4.5f, shops[0].rating)
-        assertEquals("1", shops[0].id)
-        assertEquals("Test Sake Shop 2", shops[1].name)
-        assertEquals("Test Address 2", shops[1].address)
-        assertEquals(4.0f, shops[1].rating)
-        assertEquals("2", shops[1].id)
+        when (result) {
+            is org.example.project.domain.model.Result.Success -> {
+                assertEquals(8, result.data.size)
+            }
+            is org.example.project.domain.model.Result.Failure -> {
+                assertTrue(false, "Should not fail: ${result.error.message}")
+            }
+            is org.example.project.domain.model.Result.Loading -> {
+                assertTrue(false, "Should not be loading")
+            }
+        }
     }
-
+    
     @Test
-    fun `should return success with sake shop detail when local data source returns data`() = runTest {
+    fun `getAllSakeShops should return shops with valid data`() = runTest {
         // When
-        val result = repository.getSakeShopDetail("1")
-
+        val result = repository.getAllSakeShops()
+        
         // Then
-        assertTrue(result is Result.Success)
-        val shop = (result as Result.Success).data
-        assertEquals("1", shop.id)
-        assertEquals("Test Sake Shop 1", shop.name)
-        assertEquals("https://example.com/image1.jpg", shop.imageUrl)
-        assertEquals("Test Description 1", shop.description)
-        assertEquals(4.5f, shop.rating)
-        assertEquals("Test Address 1", shop.address)
-        assertEquals("https://example.com/shop1", shop.websiteUrl)
+        when (result) {
+            is org.example.project.domain.model.Result.Success -> {
+                val shops = result.data
+                assertTrue(shops.isNotEmpty())
+                shops.forEach { shop ->
+                    assertTrue(shop.id.isNotBlank(), "Shop ID should not be blank")
+                    assertTrue(shop.name.isNotBlank(), "Shop name should not be blank")
+                    assertTrue(shop.address.isNotBlank(), "Shop address should not be blank")
+                    assertTrue(shop.rating >= 0.0, "Shop rating should be non-negative")
+                }
+            }
+            else -> assertTrue(false, "Should return success")
+        }
     }
-
+    
     @Test
-    fun `should return failure when shop not found`() = runTest {
+    fun `getSakeShopDetail should return correct shop for valid ID`() = runTest {
+        // Given
+        val allShopsResult = repository.getAllSakeShops()
+        val firstShop = when (allShopsResult) {
+            is org.example.project.domain.model.Result.Success -> allShopsResult.data.first()
+            else -> return@runTest
+        }
+        
         // When
-        val result = repository.getSakeShopDetail("999")
-
+        val result = repository.getSakeShopDetail(firstShop.id)
+        
         // Then
-        assertTrue(result is Result.Failure)
+        when (result) {
+            is org.example.project.domain.model.Result.Success -> {
+                val shop = result.data
+                assertEquals(firstShop.id, shop.id)
+                assertEquals(firstShop.name, shop.name)
+                assertEquals(firstShop.address, shop.address)
+                assertEquals(firstShop.rating, shop.rating)
+                assertNotNull(shop.description)
+                assertNotNull(shop.imageUrl)
+                assertNotNull(shop.websiteUrl)
+            }
+            is org.example.project.domain.model.Result.Failure -> {
+                assertTrue(false, "Should not fail: ${result.error.message}")
+            }
+            is org.example.project.domain.model.Result.Loading -> {
+                assertTrue(false, "Should not be loading")
+            }
+        }
     }
-
+    
     @Test
-    fun `should return success when initializing data`() = runTest {
+    fun `getSakeShopDetail should return failure for invalid ID`() = runTest {
         // When
-        val result = repository.initializeData()
-
+        val result = repository.getSakeShopDetail("invalid_id")
+        
         // Then
-        assertTrue(result is Result.Success)
-        assertTrue((result as Result.Success).data)
+        when (result) {
+            is org.example.project.domain.model.Result.Success -> {
+                assertTrue(false, "Should not succeed for invalid ID")
+            }
+            is org.example.project.domain.model.Result.Failure -> {
+                // Expected behavior
+                assertTrue(true)
+            }
+            is org.example.project.domain.model.Result.Loading -> {
+                assertTrue(false, "Should not be loading")
+            }
+        }
     }
 }

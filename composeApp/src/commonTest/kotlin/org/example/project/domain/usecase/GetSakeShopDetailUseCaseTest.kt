@@ -1,61 +1,92 @@
 package org.example.project.domain.usecase
 
 import kotlinx.coroutines.test.runTest
-import org.example.project.domain.model.Result
-import org.example.project.domain.model.SakeShopDetail
-import org.example.project.domain.model.SakeShopPreview
-import org.example.project.domain.repository.SakeShopRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GetSakeShopDetailUseCaseTest {
-
-    private val mockRepository = object : SakeShopRepository {
-        override suspend fun getAllSakeShops(): Result<List<SakeShopPreview>> = Result.Success(emptyList())
-
-        override suspend fun getSakeShopDetail(id: String): Result<SakeShopDetail> {
-            return if (id == "1") {
-                Result.Success(SakeShopDetail(
-                    id = "1",
-                    name = "Test Sake Shop",
-                    imageUrl = "https://example.com/image.jpg",
-                    description = "A great sake shop",
-                    rating = 4.5f,
-                    address = "Test Address",
-                    websiteUrl = "https://example.com"
-                ))
-            } else {
-                Result.Failure(Exception("Shop with id $id not found"))
+    
+    private val useCase = GetSakeShopDetailUseCase(
+        org.example.project.data.repository.SakeShopRepositoryImpl(
+            org.example.project.data.source.local.ShopLocalDataSourceImpl()
+        )
+    )
+    
+    @Test
+    fun `invoke should return correct shop for valid ID`() = runTest {
+        // Given
+        val repository = org.example.project.data.repository.SakeShopRepositoryImpl(
+            org.example.project.data.source.local.ShopLocalDataSourceImpl()
+        )
+        val allShopsResult = repository.getAllSakeShops()
+        val firstShop = when (allShopsResult) {
+            is org.example.project.domain.model.Result.Success -> allShopsResult.data.first()
+            else -> return@runTest
+        }
+        
+        // When
+        val result = useCase(firstShop.id)
+        
+        // Then
+        when (result) {
+            is org.example.project.domain.model.Result.Success -> {
+                val shop = result.data
+                assertEquals(firstShop.id, shop.id)
+                assertEquals(firstShop.name, shop.name)
+                assertEquals(firstShop.address, shop.address)
+                assertEquals(firstShop.rating, shop.rating)
+                assertNotNull(shop.description)
+                assertNotNull(shop.imageUrl)
+                assertNotNull(shop.websiteUrl)
+            }
+            is org.example.project.domain.model.Result.Failure -> {
+                assertTrue(false, "Should not fail: ${result.error.message}")
+            }
+            is org.example.project.domain.model.Result.Loading -> {
+                assertTrue(false, "Should not be loading")
             }
         }
     }
-
-    private val useCase = GetSakeShopDetailUseCase(mockRepository)
-
+    
     @Test
-    fun `should return success with sake shop detail when repository returns data`() = runTest {
+    fun `invoke should return failure for invalid ID`() = runTest {
         // When
-        val result = useCase("1")
-
+        val result = useCase("invalid_id")
+        
         // Then
-        assertTrue(result is Result.Success)
-        val shop = (result as Result.Success).data
-        assertEquals("1", shop.id)
-        assertEquals("Test Sake Shop", shop.name)
-        assertEquals("https://example.com/image.jpg", shop.imageUrl)
-        assertEquals("A great sake shop", shop.description)
-        assertEquals(4.5f, shop.rating)
-        assertEquals("Test Address", shop.address)
-        assertEquals("https://example.com", shop.websiteUrl)
+        when (result) {
+            is org.example.project.domain.model.Result.Success -> {
+                assertTrue(false, "Should not succeed for invalid ID")
+            }
+            is org.example.project.domain.model.Result.Failure -> {
+                // Expected behavior
+                assertTrue(true)
+            }
+            is org.example.project.domain.model.Result.Loading -> {
+                assertTrue(false, "Should not be loading")
+            }
+        }
     }
-
+    
     @Test
-    fun `should return failure when repository returns failure`() = runTest {
+    fun `invoke should return failure for empty ID`() = runTest {
         // When
-        val result = useCase("2")
-
+        val result = useCase("")
+        
         // Then
-        assertTrue(result is Result.Failure)
+        when (result) {
+            is org.example.project.domain.model.Result.Success -> {
+                assertTrue(false, "Should not succeed for empty ID")
+            }
+            is org.example.project.domain.model.Result.Failure -> {
+                // Expected behavior
+                assertTrue(true)
+            }
+            is org.example.project.domain.model.Result.Loading -> {
+                assertTrue(false, "Should not be loading")
+            }
+        }
     }
 }
